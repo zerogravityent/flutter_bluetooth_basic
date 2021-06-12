@@ -17,6 +17,9 @@ import android.content.pm.PackageManager;
 import android.util.Log;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+
+import com.gprinter.command.FactoryCommand;
+
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.plugin.common.EventChannel.EventSink;
 import io.flutter.plugin.common.EventChannel.StreamHandler;
@@ -117,6 +120,18 @@ public class FlutterBluetoothBasicPlugin implements MethodCallHandler, RequestPe
         break;
       case "writeData":
         writeData(result, args);
+        break;
+      case "print":
+        print(result, args);
+        break;
+      case "printReceipt":
+        print(result, args);
+        break;
+      case "printLabel":
+        print(result, args);
+        break;
+      case "printTest":
+        printTest(result);
         break;
       default:
         result.notImplemented();
@@ -339,6 +354,63 @@ public class FlutterBluetoothBasicPlugin implements MethodCallHandler, RequestPe
       activity.unregisterReceiver(mReceiver);
     }
   };
+
+  private void printTest(Result result) {
+    if (DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id] == null ||
+            !DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id].getConnState()) {
+
+      result.error("not connect", "state not right", null);
+    }
+
+    threadPool = ThreadPool.getInstantiation();
+    threadPool.addSerialTask(new Runnable() {
+      @Override
+      public void run() {
+        if (DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id].getCurrentPrinterCommand() == PrinterCommand.ESC) {
+          DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id].sendByteDataImmediately(FactoryCommand.printSelfTest(FactoryCommand.printerMode.ESC));
+        }else if (DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id].getCurrentPrinterCommand() == PrinterCommand.TSC) {
+          DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id].sendByteDataImmediately(FactoryCommand.printSelfTest(FactoryCommand.printerMode.TSC));
+        }else if (DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id].getCurrentPrinterCommand() == PrinterCommand.CPCL) {
+          DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id].sendByteDataImmediately(FactoryCommand.printSelfTest(FactoryCommand.printerMode.CPCL));
+        }
+      }
+    });
+
+  }
+
+  @SuppressWarnings("unchecked")
+  private void print(Result result, Map<String, Object> args) {
+    if (DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id] == null ||
+            !DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id].getConnState()) {
+
+      result.error("not connect", "state not right", null);
+    }
+
+    if (args.containsKey("config") && args.containsKey("data")) {
+      final Map<String,Object> config = (Map<String,Object>)args.get("config");
+      final List<Map<String,Object>> list = (List<Map<String,Object>>)args.get("data");
+      if(list == null){
+        return;
+      }
+
+      threadPool = ThreadPool.getInstantiation();
+      threadPool.addSerialTask(new Runnable() {
+        @Override
+        public void run() {
+          if (DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id].getCurrentPrinterCommand() == PrinterCommand.ESC) {
+            DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id].sendDataImmediately(PrintContent.mapToReceipt(config, list));
+          }else if (DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id].getCurrentPrinterCommand() == PrinterCommand.TSC) {
+            DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id].sendDataImmediately(PrintContent.mapToLabel(config, list));
+          }else if (DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id].getCurrentPrinterCommand() == PrinterCommand.CPCL) {
+            DeviceConnFactoryManager.getDeviceConnFactoryManagers()[id].sendDataImmediately(PrintContent.mapToCPCL(config, list));
+          }
+        }
+      });
+    }else{
+      result.error("please add config or data", "", null);
+    }
+
+  }
 
 
 

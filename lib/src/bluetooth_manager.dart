@@ -22,7 +22,7 @@ class BluetoothManager {
   BluetoothManager._() {
     _channel.setMethodCallHandler((MethodCall call) {
       _methodStreamController.add(call);
-      return;
+      return Future.value(0);
     });
   }
 
@@ -58,7 +58,7 @@ class BluetoothManager {
   /// Starts a scan for Bluetooth Low Energy devices
   /// Timeout closes the stream after a specified [Duration]
   Stream<BluetoothDevice> scan({
-    Duration timeout,
+    required Duration timeout,
   }) async* {
     if (_isScanning.value == true) {
       throw Exception('Another scan is already in progress.');
@@ -69,9 +69,8 @@ class BluetoothManager {
 
     final killStreams = <Stream>[];
     killStreams.add(_stopScanPill);
-    if (timeout != null) {
-      killStreams.add(Rx.timer(null, timeout));
-    }
+
+    killStreams.add(Rx.timer(null, timeout));
 
     // Clear scan results list
     _scanResults.add(<BluetoothDevice>[]);
@@ -92,7 +91,7 @@ class BluetoothManager {
         .doOnDone(stopScan)
         .map((map) {
       final device = BluetoothDevice.fromJson(Map<String, dynamic>.from(map));
-      final List<BluetoothDevice> list = _scanResults.value;
+      final List<BluetoothDevice> list = _scanResults.value!;
       int newIndex = -1;
       list.asMap().forEach((index, e) {
         if (e.address == device.address) {
@@ -111,7 +110,7 @@ class BluetoothManager {
   }
 
   Future startScan({
-    Duration timeout,
+    required Duration timeout,
   }) async {
     await scan(timeout: timeout).drain();
     return _scanResults.value;
@@ -140,4 +139,29 @@ class BluetoothManager {
 
     return Future.value(true);
   }
+
+  Future<dynamic> printReceipt(
+      Map<String, dynamic> config, List<LineText> data) {
+    Map<String, Object> args = Map();
+    args['config'] = config;
+    args['data'] = data.map((m) {
+      return m.toJson();
+    }).toList();
+
+    _channel.invokeMethod('printReceipt', args);
+    return Future.value(true);
+  }
+
+  Future<dynamic> printLabel(Map<String, dynamic> config, List<LineText> data) {
+    Map<String, Object> args = Map();
+    args['config'] = config;
+    args['data'] = data.map((m) {
+      return m.toJson();
+    }).toList();
+
+    _channel.invokeMethod('printLabel', args);
+    return Future.value(true);
+  }
+
+  Future<dynamic> printTest() => _channel.invokeMethod('printTest');
 }

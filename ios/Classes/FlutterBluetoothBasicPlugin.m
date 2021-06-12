@@ -1,5 +1,7 @@
 #import "FlutterBluetoothBasicPlugin.h"
 #import "ConnecterManager.h"
+#import "EscCommand.h"
+#import "TscCommand.h"
 
 @interface FlutterBluetoothBasicPlugin ()
 @property(nonatomic, retain) NSObject<FlutterPluginRegistrar> *registrar;
@@ -117,6 +119,110 @@
            result(e);
        }
   }
+}
+
+-(NSData *)mapToTscCommand:(NSDictionary *) args {
+    NSDictionary *config = [args objectForKey:@"config"];
+    NSMutableArray *list = [args objectForKey:@"data"];
+    
+    NSNumber *width = ![config objectForKey:@"width"]?@"48" : [config objectForKey:@"width"];
+    NSNumber *height = ![config objectForKey:@"height"]?@"80" : [config objectForKey:@"height"];
+    NSNumber *gap = ![config objectForKey:@"gap"]?@"2" : [config objectForKey:@"gap"];
+    
+    TscCommand *command = [[TscCommand alloc]init];
+    // 设置标签尺寸宽高，按照实际尺寸设置 单位mm
+    [command addSize:[width intValue] :[height intValue]];
+    // 设置标签间隙，按照实际尺寸设置，如果为无间隙纸则设置为0 单位mm
+    [command addGapWithM:[gap intValue] withN:0];
+    // 设置原点坐标
+    [command addReference:0 :0];
+    // 撕纸模式开启
+    [command addTear:@"ON"];
+    // 开启带Response的打印，用于连续打印
+    [command addQueryPrinterStatus:ON];
+    // 清除打印缓冲区
+    [command addCls];
+    
+    for(NSDictionary *m in list){
+        
+        NSString *type = [m objectForKey:@"type"];
+        NSString *content = [m objectForKey:@"content"];
+        NSNumber *x = ![m objectForKey:@"x"]?@0 : [m objectForKey:@"x"];
+        NSNumber *y = ![m objectForKey:@"y"]?@0 : [m objectForKey:@"y"];
+        
+        NSNumber *image_width = ![m objectForKey:@"width"]?@300 : [m objectForKey:@"width"];
+        
+        if([@"text" isEqualToString:type]){
+            [command addTextwithX:[x intValue] withY:[y intValue] withFont:@"TSS24.BF2" withRotation:0 withXscal:1 withYscal:1 withText:content];
+        }else if([@"barcode" isEqualToString:type]){
+            [command add1DBarcode:[x intValue] :[y intValue] :@"CODE128" :100 :1 :0 :2 :2 :content];
+        }else if([@"qrcode" isEqualToString:type]){
+            [command addQRCode:[x intValue] :[y intValue] :@"L" :5 :@"A" :0 :content];
+        }else if([@"image" isEqualToString:type]){
+            NSData *decodeData = [[NSData alloc] initWithBase64EncodedString:content options:0];
+            UIImage *image = [UIImage imageWithData:decodeData];
+            [command addBitmapwithX:[x intValue] withY:[y intValue] withMode:0 withWidth:[image_width intValue] withImage:image];
+        }
+       
+    }
+    
+    [command addPrint:1 :1];
+    return [command getCommand];
+}
+
+-(NSData *)mapToEscCommand:(NSDictionary *) args {
+    NSDictionary *config = [args objectForKey:@"config"];
+    NSMutableArray *list = [args objectForKey:@"data"];
+    
+    EscCommand *command = [[EscCommand alloc]init];
+    [command addInitializePrinter];
+    [command addPrintAndFeedLines:3];
+
+    for(NSDictionary *m in list){
+        
+        NSString *type = [m objectForKey:@"type"];
+        NSString *content = [m objectForKey:@"content"];
+        NSNumber *align = ![m objectForKey:@"align"]?@0 : [m objectForKey:@"align"];
+        NSNumber *size = ![m objectForKey:@"size"]?@4 : [m objectForKey:@"size"];
+        NSNumber *weight = ![m objectForKey:@"weight"]?@0 : [m objectForKey:@"weight"];
+        NSNumber *width = ![m objectForKey:@"width"]?@0 : [m objectForKey:@"width"];
+        NSNumber *height = ![m objectForKey:@"height"]?@0 : [m objectForKey:@"height"];
+        NSNumber *underline = ![m objectForKey:@"underline"]?@0 : [m objectForKey:@"underline"];
+        NSNumber *linefeed = ![m objectForKey:@"linefeed"]?@0 : [m objectForKey:@"linefeed"];
+        
+        NSNumber *image_width = ![m objectForKey:@"width"]?@576 : [m objectForKey:@"width"];
+        
+        //内容居左（默认居左）
+        [command addSetJustification:[align intValue]];
+        
+        if([@"text" isEqualToString:type]){
+            [command addPrintMode: [weight intValue] ==0?0:0|8|16|32];
+            [command addText:content];
+            [command addPrintMode: 0];
+        }else if([@"barcode" isEqualToString:type]){
+            [command addSetBarcodeWidth:2];
+            [command addSetBarcodeHeight:60];
+            [command addSetBarcodeHRPosition:2];
+            [command addCODE128:'B' : content];
+        }else if([@"qrcode" isEqualToString:type]){
+            //二维码
+            [command addQRCodeSizewithpL:0 withpH:0 withcn:0 withyfn:0 withn:[size intValue]];
+            [command addQRCodeSavewithpL:0x0b withpH:0 withcn:0x31 withyfn:0x50 withm:0x30 withData:[content dataUsingEncoding:NSUTF8StringEncoding]];
+            [command addQRCodePrintwithpL:0 withpH:0 withcn:0 withyfn:0 withm:0];
+        }else if([@"image" isEqualToString:type]){
+            NSData *decodeData = [[NSData alloc] initWithBase64EncodedString:content options:0];
+            UIImage *image = [UIImage imageWithData:decodeData];
+            [command addOriginrastBitImage:image width:[image_width intValue]];
+        }
+        
+        if([linefeed isEqualToNumber:@1]){
+            [command addPrintAndLineFeed];
+        }
+       
+    }
+    
+    [command addPrintAndFeedLines:4];
+    return [command getCommand];
 }
 
 -(void)startScan {
